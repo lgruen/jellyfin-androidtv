@@ -113,6 +113,8 @@ public class PlaybackController implements PlaybackControllerNotifiable {
     private long mSeekPosition = -1;
     private boolean wasSeeking = false;
     private boolean finishedInitialSeek = false;
+    private boolean mPendingSeekConfirmation = false;
+    private long mPendingSeekPosition = -1;
 
     private LocalDateTime mCurrentProgramEnd = null;
     private LocalDateTime mCurrentProgramStart = null;
@@ -1329,8 +1331,12 @@ public class PlaybackController implements PlaybackControllerNotifiable {
     }
 
     public long getCurrentPosition() {
-        // don't report the real position if seeking
-        return !isPlaying() && mSeekPosition != -1 ? mSeekPosition : mCurrentPosition;
+        if (mPendingSeekConfirmation && mPendingSeekPosition != -1) {
+            return mPendingSeekPosition;
+        }
+
+        refreshCurrentPosition();
+        return mCurrentPosition;
     }
 
     public boolean isPaused() {
@@ -1344,6 +1350,20 @@ public class PlaybackController implements PlaybackControllerNotifiable {
     public void setZoom(@NonNull ZoomMode mode) {
         if (hasInitializedVideoManager())
             mVideoManager.setZoom(mode);
+    }
+
+    public void setPendingSeekPosition(long position) {
+        mPendingSeekPosition = position;
+        mPendingSeekConfirmation = true;
+    }
+
+    public void clearPendingSeekPosition() {
+        mPendingSeekPosition = -1;
+        mPendingSeekConfirmation = false;
+    }
+
+    public long getPendingSeekPosition() {
+        return mPendingSeekPosition;
     }
 
     /**
