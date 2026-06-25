@@ -261,6 +261,11 @@ class UserPreferences(context: Context) : SharedPreferenceStore(
 		var seekConfirmationRequired = booleanPreference("seek_confirmation", true)
 
 		/**
+		 * Show trickplay thumbnails while previewing a seek (when the server has trickplay data).
+		 */
+		var trickPlayEnabled = booleanPreference("trickplay_enabled", true)
+
+		/**
 		 * Enable the use of software-based codecs.
 		 */
 		var softwareCodecsEnabled = booleanPreference("software_codecs_enabled", true)
