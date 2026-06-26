@@ -44,6 +44,21 @@ android {
 				keyPassword = signingKeyPassword
 			}
 		}
+
+		// Stable debug signing: if a fixed keystore is present at the repo root (restored from
+		// the DEBUG_KEYSTORE_B64 secret in CI), sign debug builds with it so the sideloaded APK
+		// keeps a constant signature and updates install in place. Relying on AGP's auto-generated
+		// ~/.android/debug.keystore is non-deterministic on CI runners (fresh key per run). Falls
+		// back to the default debug keystore for local builds where this file is absent.
+		val debugKeystore = rootProject.file("debug.keystore")
+		if (debugKeystore.exists()) {
+			getByName("debug") {
+				storeFile = debugKeystore
+				storePassword = "android"
+				keyAlias = "androiddebugkey"
+				keyPassword = "android"
+			}
+		}
 	}
 
 	dependenciesInfo {

@@ -7,3 +7,6 @@ local.properties
 .kotlin/
 build/
 captures/
+
+# Local/CI debug signing keystore (restored from secret in CI)
+debug.keystore
