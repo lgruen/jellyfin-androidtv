@@ -24,6 +24,20 @@ jobs:
           java-version-file: .tools-versions
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+      - name: Restore stable debug keystore
+        # Without this, the Android Gradle Plugin generates a fresh ~/.android/debug.keystore
+        # on every runner, so each build is signed with a different key and the sideloaded APK
+        # can't be updated in place. Restoring a fixed keystore keeps the signing identity stable.
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$DEBUG_KEYSTORE_B64" ]; then
+            mkdir -p ~/.android
+            echo "$DEBUG_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            echo "Restored stable debug keystore ($(stat -c%s ~/.android/debug.keystore) bytes)."
+          else
+            echo "DEBUG_KEYSTORE_B64 secret not set; using ephemeral keystore." >&2
+          fi
       - name: Assemble debug APKs
         run: ./gradlew assembleDebug
       - name: Create publish bundle
