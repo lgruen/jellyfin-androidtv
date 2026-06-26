@@ -29,7 +29,12 @@ class ThumbnailPreviewHandler(
 		val thumbnailCallback = object : PlaybackSeekDataProvider.ResultCallback() {
 			override fun onThumbnailLoaded(bitmap: Bitmap?, index: Int) {
 				if (bitmap == null) return
-				if (currentRequestNumber <= lastShownRequestNumber.get()) return
+				// A single request delivers TWO callbacks: the placeholder (onStart) and the
+				// real frame (onSuccess), both with this same currentRequestNumber. Using `<=`
+				// here let the placeholder claim the request number, so the real frame was then
+				// rejected as "not newer" and never shown (permanent placeholder). `<` only
+				// rejects strictly-older requests, so onSuccess can still replace its own placeholder.
+				if (currentRequestNumber < lastShownRequestNumber.get()) return
 				if (currentRequestNumber < requestNumber.get() - MAX_REQUEST_AGE) return
 
 				lastShownRequestNumber.set(currentRequestNumber)
