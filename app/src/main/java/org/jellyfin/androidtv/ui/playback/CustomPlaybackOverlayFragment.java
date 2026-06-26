@@ -606,7 +606,28 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
                         }
                     }
 
-                    if ((!mIsVisible || isSeekBarFocused()) && !playbackControllerContainer.getValue().getPlaybackController().isLiveTv()) {
+                    // VLC-style "naked" seek: when NO player UI is showing (neither the custom panel nor
+                    // the leanback transport controls), D-pad left/right just move the position with no
+                    // overlay and no thumbnail preview — nothing but the movie. To scrub with the trickplay
+                    // preview, press the center button first to bring up the full controls (handled by the
+                    // seek-bar-focused branch below). PlaybackController.skip() accumulates rapid presses and
+                    // debounces the actual seek, drawing no UI.
+                    if (!mIsVisible && !leanbackOverlayFragment.isControlsOverlayVisible()
+                            && !playbackControllerContainer.getValue().getPlaybackController().isLiveTv()) {
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                            playbackControllerContainer.getValue().getPlaybackController().fastForward();
+                            return true;
+                        }
+
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                            playbackControllerContainer.getValue().getPlaybackController().rewind();
+                            return true;
+                        }
+                    }
+
+                    // Full controls up and seek bar focused: keep the rich preview / trickplay seek
+                    // (with optional confirmation), exactly as before.
+                    if (isSeekBarFocused() && !playbackControllerContainer.getValue().getPlaybackController().isLiveTv()) {
                         boolean seekConfirmationRequired = userPreferences.getValue().get(UserPreferences.Companion.getSeekConfirmationRequired());
 
                         if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
