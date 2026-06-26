@@ -606,13 +606,15 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
                         }
                     }
 
-                    // VLC-style "naked" seek: when NO player UI is showing (neither the custom panel nor
-                    // the leanback transport controls), D-pad left/right just move the position with no
-                    // overlay and no thumbnail preview — nothing but the movie. To scrub with the trickplay
-                    // preview, press the center button first to bring up the full controls (handled by the
-                    // seek-bar-focused branch below). PlaybackController.skip() accumulates rapid presses and
-                    // debounces the actual seek, drawing no UI.
-                    if (!mIsVisible && !leanbackOverlayFragment.isControlsOverlayVisible()
+                    // VLC-style "naked" seek: when no player UI is up (the custom panel is hidden and the
+                    // seek bar isn't focused), D-pad left/right just move the position with no overlay and no
+                    // thumbnail preview — nothing but the movie. Once the full controls are up the seek bar
+                    // takes focus, which routes to the trickplay-preview branch below. (Do NOT gate on
+                    // leanbackOverlayFragment.isControlsOverlayVisible() — leanback keeps that flag set while
+                    // this app suppresses the overlay via shouldShowOverlay, so it reads "visible" during
+                    // normal playback and this branch would never fire.) PlaybackController.skip() accumulates
+                    // rapid presses and debounces the actual seek, drawing no UI.
+                    if (!mIsVisible && !isSeekBarFocused()
                             && !playbackControllerContainer.getValue().getPlaybackController().isLiveTv()) {
                         if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
                             playbackControllerContainer.getValue().getPlaybackController().fastForward();
