@@ -36,9 +36,10 @@ class TrickplayScrubLoader(
 		fun onBitmap(bitmap: Bitmap)
 	}
 
-	fun hasTrickplay(item: BaseItemDto?, mediaSource: MediaSourceInfo?): Boolean {
-		if (item == null || mediaSource == null) return false
-		return item.trickplay?.get(mediaSource.id)?.values?.firstOrNull() != null
+	/** Trickplay frame interval in ms for this item, or 0 if it has no trickplay. */
+	fun intervalMs(item: BaseItemDto?, mediaSource: MediaSourceInfo?): Long {
+		if (item == null || mediaSource == null) return 0
+		return item.trickplay?.get(mediaSource.id)?.values?.firstOrNull()?.interval?.toLong() ?: 0
 	}
 
 	fun load(item: BaseItemDto, mediaSource: MediaSourceInfo, timeMs: Long, callback: BitmapCallback) {

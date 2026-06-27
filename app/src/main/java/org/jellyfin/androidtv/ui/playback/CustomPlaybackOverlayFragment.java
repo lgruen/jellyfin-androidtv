@@ -136,7 +136,6 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
     private final Lazy<BackgroundService> backgroundService = inject(BackgroundService.class);
     private final Lazy<ImageHelper> imageHelper = inject(ImageHelper.class);
     private final Lazy<coil3.ImageLoader> imageLoader = inject(coil3.ImageLoader.class);
-    private final Lazy<org.jellyfin.androidtv.preference.UserSettingPreferences> userSettingPreferences = inject(org.jellyfin.androidtv.preference.UserSettingPreferences.class);
 
     // VLC-style scrub: while holding left/right the target position moves and the trickplay frame for it
     // is shown fullscreen (no stream re-buffer); the real seek commits shortly after the last press.
@@ -619,16 +618,14 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
                             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
                                 leanbackOverlayFragment.setShouldShowOverlay(false);
                                 leanbackOverlayFragment.hideOverlay();
-                                long fwd = userSettingPreferences.getValue().get(org.jellyfin.androidtv.preference.UserSettingPreferences.Companion.getSkipForwardLength()).longValue();
-                                scrubBy(fwd);
+                                scrubBy(true);
                                 return true;
                             }
 
                             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
                                 leanbackOverlayFragment.setShouldShowOverlay(false);
                                 leanbackOverlayFragment.hideOverlay();
-                                long back = userSettingPreferences.getValue().get(org.jellyfin.androidtv.preference.UserSettingPreferences.Companion.getSkipBackLength()).longValue();
-                                scrubBy(-back);
+                                scrubBy(false);
                                 return true;
                             }
                         }
@@ -749,7 +746,7 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
         closePlayer();
     }
 
-    private void scrubBy(long deltaMs) {
+    private void scrubBy(boolean forward) {
         PlaybackController pc = playbackControllerContainer.getValue().getPlaybackController();
         BaseItemDto item = pc.getCurrentlyPlayingItem();
         org.jellyfin.sdk.model.api.MediaSourceInfo mediaSource = pc.getCurrentMediaSource();
@@ -760,9 +757,11 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
                     requireContext(), imageLoader.getValue(), api.getValue());
         }
 
+        long interval = mScrubLoader.intervalMs(item, mediaSource);
+
         // Without trickplay (or a known duration) there's no frame to preview -> plain naked seek.
-        if (duration <= 0 || !mScrubLoader.hasTrickplay(item, mediaSource)) {
-            if (deltaMs >= 0) pc.fastForward();
+        if (duration <= 0 || interval <= 0) {
+            if (forward) pc.fastForward();
             else pc.rewind();
             return;
         }
@@ -774,7 +773,13 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
             // Freeze playback while scrubbing so audio/video don't keep running under the preview.
             pc.pause();
         }
-        mScrubTargetMs = Math.max(0, Math.min(duration, mScrubTargetMs + deltaMs));
+
+        // Step to the next/previous trickplay frame in the seek direction. Forward snaps UP to the next
+        // frame (so it never previews a frame behind where you are), backward snaps DOWN to the previous
+        // one. The previewed frame boundary is also exactly where the seek lands on release.
+        if (forward) mScrubTargetMs = (mScrubTargetMs / interval) * interval + interval;
+        else mScrubTargetMs = ((mScrubTargetMs + interval - 1) / interval) * interval - interval;
+        mScrubTargetMs = Math.max(0, Math.min(duration, mScrubTargetMs));
 
         // Update the fullscreen trickplay preview (rate-limited so we don't spam coil while held).
         long now = android.os.SystemClock.uptimeMillis();
