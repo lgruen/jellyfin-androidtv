@@ -142,15 +142,12 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
     // is shown fullscreen (no stream re-buffer); the real seek commits shortly after the last press.
     private org.jellyfin.androidtv.ui.playback.overlay.TrickplayScrubLoader mScrubLoader;
     private boolean mScrubbing = false;
+    private boolean mScrubWasPlaying = false;
     private long mScrubTargetMs = 0;
     private long mLastScrubFetchMs = 0;
-    private final Runnable mScrubCommit = () -> {
-        if (binding == null || !mScrubbing) return;
-        long target = mScrubTargetMs;
-        mScrubbing = false;
-        binding.scrubPreview.setBitmap(null);
-        playbackControllerContainer.getValue().getPlaybackController().seek(target);
-    };
+    // Fallback only: the scrub normally commits on key-release (see onKey ACTION_UP). This fires if a
+    // key-up is ever missed so the preview can't get stuck.
+    private final Runnable mScrubCommit = () -> commitScrub();
 
     private final PlaybackOverlayFragmentHelper helper = new PlaybackOverlayFragmentHelper(this);
 
@@ -436,6 +433,12 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
                 return true;
             }
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
+            // Commit the VLC-style scrub the instant left/right is released — no commit delay.
+            if (mScrubbing && (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+                commitScrub();
+                return true;
+            }
+
             if (keyListener.onKey(v, keyCode, event)) return true;
 
             if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
@@ -766,7 +769,10 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
 
         if (!mScrubbing) {
             mScrubbing = true;
+            mScrubWasPlaying = pc.isPlaying();
             mScrubTargetMs = pc.getCurrentPosition();
+            // Freeze playback while scrubbing so audio/video don't keep running under the preview.
+            pc.pause();
         }
         mScrubTargetMs = Math.max(0, Math.min(duration, mScrubTargetMs + deltaMs));
 
@@ -779,9 +785,22 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
             });
         }
 
-        // Commit the real seek shortly after the last press (responsive; no big blind jump).
+        // The real seek commits on key-release (onKey ACTION_UP). Arm a fallback in case a key-up is
+        // ever dropped, so the preview can't get stuck.
         mHandler.removeCallbacks(mScrubCommit);
-        mHandler.postDelayed(mScrubCommit, 350);
+        mHandler.postDelayed(mScrubCommit, 1200);
+    }
+
+    private void commitScrub() {
+        if (!mScrubbing) return;
+        mScrubbing = false;
+        mHandler.removeCallbacks(mScrubCommit);
+        long target = mScrubTargetMs;
+        if (binding != null) binding.scrubPreview.setBitmap(null);
+        PlaybackController pc = playbackControllerContainer.getValue().getPlaybackController();
+        // Resume playback at the scrubbed position (or just seek there if we were paused beforehand).
+        if (mScrubWasPlaying) pc.play(target);
+        else pc.seek(target);
     }
 
     public void show() {
