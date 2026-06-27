@@ -135,6 +135,22 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
     private final Lazy<NavigationRepository> navigationRepository = inject(NavigationRepository.class);
     private final Lazy<BackgroundService> backgroundService = inject(BackgroundService.class);
     private final Lazy<ImageHelper> imageHelper = inject(ImageHelper.class);
+    private final Lazy<coil3.ImageLoader> imageLoader = inject(coil3.ImageLoader.class);
+    private final Lazy<org.jellyfin.androidtv.preference.UserSettingPreferences> userSettingPreferences = inject(org.jellyfin.androidtv.preference.UserSettingPreferences.class);
+
+    // VLC-style scrub: while holding left/right the target position moves and the trickplay frame for it
+    // is shown fullscreen (no stream re-buffer); the real seek commits shortly after the last press.
+    private org.jellyfin.androidtv.ui.playback.overlay.TrickplayScrubLoader mScrubLoader;
+    private boolean mScrubbing = false;
+    private long mScrubTargetMs = 0;
+    private long mLastScrubFetchMs = 0;
+    private final Runnable mScrubCommit = () -> {
+        if (binding == null || !mScrubbing) return;
+        long target = mScrubTargetMs;
+        mScrubbing = false;
+        binding.scrubPreview.setBitmap(null);
+        playbackControllerContainer.getValue().getPlaybackController().seek(target);
+    };
 
     private final PlaybackOverlayFragmentHelper helper = new PlaybackOverlayFragmentHelper(this);
 
@@ -600,14 +616,16 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
                             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
                                 leanbackOverlayFragment.setShouldShowOverlay(false);
                                 leanbackOverlayFragment.hideOverlay();
-                                playbackControllerContainer.getValue().getPlaybackController().fastForward();
+                                long fwd = userSettingPreferences.getValue().get(org.jellyfin.androidtv.preference.UserSettingPreferences.Companion.getSkipForwardLength()).longValue();
+                                scrubBy(fwd);
                                 return true;
                             }
 
                             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
                                 leanbackOverlayFragment.setShouldShowOverlay(false);
                                 leanbackOverlayFragment.hideOverlay();
-                                playbackControllerContainer.getValue().getPlaybackController().rewind();
+                                long back = userSettingPreferences.getValue().get(org.jellyfin.androidtv.preference.UserSettingPreferences.Companion.getSkipBackLength()).longValue();
+                                scrubBy(-back);
                                 return true;
                             }
                         }
@@ -712,6 +730,9 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
         super.onStop();
         Timber.i("Stopping!");
 
+        mHandler.removeCallbacks(mScrubCommit);
+        mScrubbing = false;
+
         if (leanbackOverlayFragment != null)
             leanbackOverlayFragment.setOnKeyInterceptListener(null);
 
@@ -723,6 +744,44 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
         }
 
         closePlayer();
+    }
+
+    private void scrubBy(long deltaMs) {
+        PlaybackController pc = playbackControllerContainer.getValue().getPlaybackController();
+        BaseItemDto item = pc.getCurrentlyPlayingItem();
+        org.jellyfin.sdk.model.api.MediaSourceInfo mediaSource = pc.getCurrentMediaSource();
+        long duration = pc.getDuration();
+
+        if (mScrubLoader == null) {
+            mScrubLoader = new org.jellyfin.androidtv.ui.playback.overlay.TrickplayScrubLoader(
+                    requireContext(), imageLoader.getValue(), api.getValue());
+        }
+
+        // Without trickplay (or a known duration) there's no frame to preview -> plain naked seek.
+        if (duration <= 0 || !mScrubLoader.hasTrickplay(item, mediaSource)) {
+            if (deltaMs >= 0) pc.fastForward();
+            else pc.rewind();
+            return;
+        }
+
+        if (!mScrubbing) {
+            mScrubbing = true;
+            mScrubTargetMs = pc.getCurrentPosition();
+        }
+        mScrubTargetMs = Math.max(0, Math.min(duration, mScrubTargetMs + deltaMs));
+
+        // Update the fullscreen trickplay preview (rate-limited so we don't spam coil while held).
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - mLastScrubFetchMs >= 50) {
+            mLastScrubFetchMs = now;
+            mScrubLoader.load(item, mediaSource, mScrubTargetMs, bitmap -> {
+                if (mScrubbing && binding != null) binding.scrubPreview.setBitmap(bitmap);
+            });
+        }
+
+        // Commit the real seek shortly after the last press (responsive; no big blind jump).
+        mHandler.removeCallbacks(mScrubCommit);
+        mHandler.postDelayed(mScrubCommit, 350);
     }
 
     public void show() {

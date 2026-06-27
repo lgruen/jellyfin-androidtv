@@ -40,6 +40,13 @@
 
     </FrameLayout>
 
+    <org.jellyfin.androidtv.ui.playback.overlay.ScrubPreviewView
+        android:id="@+id/scrub_preview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:focusable="false"
+        android:focusableInTouchMode="false" />
+
     <FrameLayout
         android:id="@+id/popupArea"
         android:layout_width="fill_parent"
