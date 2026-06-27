@@ -588,21 +588,26 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
 
                     if (!mIsVisible) {
                         if (!playbackControllerContainer.getValue().getPlaybackController().isLiveTv()) {
-                            // VLC-style "naked" seek: while no player UI is showing, D-pad left/right just
-                            // move the position (same as the hardware FF/RW keys above) with no overlay and
-                            // no thumbnail preview — nothing but the movie. Stock behaviour here was to do
-                            // nothing but restart the fade timer. When the controls ARE up (mIsVisible) this
-                            // block is skipped and left/right fall through to leanback's native scrub, which
-                            // shows the trickplay preview.
+                            // VLC-style "naked" seek: while no controls overlay is up, D-pad left/right
+                            // seek (like the hardware FF/RW keys) with no UI — nothing but the movie.
+                            // We must also force the overlay to STAY hidden: the stock seek re-buffers,
+                            // and on the buffer/resume leanback would pop the transport controls (line ~479
+                            // set shouldShowOverlay=true on this keydown). Once the controls are up the next
+                            // press enters leanback's scrub, which pauses — the behaviour that made this look
+                            // like the stock app. setShouldShowOverlay(false)+hideOverlay keep it suppressed,
+                            // so repeated presses keep landing here. Press OK / up-down to summon the UI (that
+                            // re-enables it via line ~479), where left/right then scrub with trickplay.
                             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                                leanbackOverlayFragment.setShouldShowOverlay(false);
+                                leanbackOverlayFragment.hideOverlay();
                                 playbackControllerContainer.getValue().getPlaybackController().fastForward();
-                                setFadingEnabled(true);
                                 return true;
                             }
 
                             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                                leanbackOverlayFragment.setShouldShowOverlay(false);
+                                leanbackOverlayFragment.hideOverlay();
                                 playbackControllerContainer.getValue().getPlaybackController().rewind();
-                                setFadingEnabled(true);
                                 return true;
                             }
                         }
