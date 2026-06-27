@@ -588,12 +588,20 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
 
                     if (!mIsVisible) {
                         if (!playbackControllerContainer.getValue().getPlaybackController().isLiveTv()) {
+                            // VLC-style "naked" seek: while no player UI is showing, D-pad left/right just
+                            // move the position (same as the hardware FF/RW keys above) with no overlay and
+                            // no thumbnail preview — nothing but the movie. Stock behaviour here was to do
+                            // nothing but restart the fade timer. When the controls ARE up (mIsVisible) this
+                            // block is skipped and left/right fall through to leanback's native scrub, which
+                            // shows the trickplay preview.
                             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                                playbackControllerContainer.getValue().getPlaybackController().fastForward();
                                 setFadingEnabled(true);
                                 return true;
                             }
 
                             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                                playbackControllerContainer.getValue().getPlaybackController().rewind();
                                 setFadingEnabled(true);
                                 return true;
                             }
