@@ -620,18 +620,20 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
                             // like the stock app. setShouldShowOverlay(false)+hideOverlay keep it suppressed,
                             // so repeated presses keep landing here. Press OK / up-down to summon the UI (that
                             // re-enables it via line ~479), where left/right then scrub with trickplay.
-                            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                                leanbackOverlayFragment.setShouldShowOverlay(false);
-                                leanbackOverlayFragment.hideOverlay();
-                                scrubBy(true);
-                                return true;
-                            }
-
-                            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                                leanbackOverlayFragment.setShouldShowOverlay(false);
-                                leanbackOverlayFragment.hideOverlay();
-                                scrubBy(false);
-                                return true;
+                            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                                boolean forward = keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
+                                if (event.getRepeatCount() == 0) {
+                                    // Short press: exact +/- skip, keep playing, no UI (repeated taps stack via skip()).
+                                    leanbackOverlayFragment.setShouldShowOverlay(false);
+                                    leanbackOverlayFragment.hideOverlay();
+                                    if (forward) playbackControllerContainer.getValue().getPlaybackController().fastForward();
+                                    else playbackControllerContainer.getValue().getPlaybackController().rewind();
+                                    return true;
+                                }
+                                // Held down: reveal the native seekbar/timeline and let leanback's trickplay scrub
+                                // take over (full-res frame behind, no fullscreen upscaling).
+                                leanbackOverlayFragment.setShouldShowOverlay(true);
+                                return false;
                             }
                         }
 
