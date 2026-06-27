@@ -144,6 +144,11 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
     private boolean mScrubWasPlaying = false;
     private long mScrubTargetMs = 0;
     private long mLastScrubFetchMs = 0;
+    private boolean mScrubAwaitingFrame = false;
+    private final Runnable mScrubClear = () -> {
+        mScrubAwaitingFrame = false;
+        if (binding != null) binding.scrubPreview.setBitmap(null);
+    };
     // Fallback only: the scrub normally commits on key-release (see onKey ACTION_UP). This fires if a
     // key-up is ever missed so the preview can't get stuck.
     private final Runnable mScrubCommit = () -> commitScrub();
@@ -731,7 +736,9 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
         Timber.i("Stopping!");
 
         mHandler.removeCallbacks(mScrubCommit);
+        mHandler.removeCallbacks(mScrubClear);
         mScrubbing = false;
+        mScrubAwaitingFrame = false;
 
         if (leanbackOverlayFragment != null)
             leanbackOverlayFragment.setOnKeyInterceptListener(null);
@@ -770,6 +777,9 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
             mScrubbing = true;
             mScrubWasPlaying = pc.isPlaying();
             mScrubTargetMs = pc.getCurrentPosition();
+            // Cancel any pending preview-clear from a just-finished scrub so this one continues cleanly.
+            mScrubAwaitingFrame = false;
+            mHandler.removeCallbacks(mScrubClear);
             // Freeze playback while scrubbing so audio/video don't keep running under the preview.
             pc.pause();
         }
@@ -801,13 +811,17 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
         mScrubbing = false;
         mHandler.removeCallbacks(mScrubCommit);
         long target = mScrubTargetMs;
-        if (binding != null) binding.scrubPreview.setBitmap(null);
         PlaybackController pc = playbackControllerContainer.getValue().getPlaybackController();
-        // A direct-play seek() seeks to the target AND resumes playback; play(pos) would be ignored
-        // here because we paused during the scrub (it just resumes at the old spot). Re-pause afterwards
-        // only if we were already paused before scrubbing.
+        // Seek first, while the trickplay frame still covers the screen. A direct-play seek() moves to
+        // the target AND resumes playback; play(pos) would be ignored here because we paused during the
+        // scrub (it just resumes at the old spot). Re-pause afterwards only if we were already paused.
         pc.seek(target);
         if (!mScrubWasPlaying) pc.pause();
+        // Keep the preview up until the seeked frame has actually rendered (cleared on the next position
+        // report below, or by the fallback) so we don't briefly flash the original paused frame.
+        mScrubAwaitingFrame = true;
+        mHandler.removeCallbacks(mScrubClear);
+        mHandler.postDelayed(mScrubClear, 800);
     }
 
     public void show() {
@@ -1312,6 +1326,13 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
     }
 
     public void setCurrentTime(long time) {
+        // First position report after a scrub commit = the seeked frame is now rendering, so it's safe
+        // to drop the trickplay preview without flashing the pre-seek frame.
+        if (mScrubAwaitingFrame) {
+            mScrubAwaitingFrame = false;
+            mHandler.removeCallbacks(mScrubClear);
+            if (binding != null) binding.scrubPreview.setBitmap(null);
+        }
         binding.skipOverlay.setCurrentPositionMs(time);
         if (leanbackOverlayFragment != null)
             leanbackOverlayFragment.updateCurrentPosition();
