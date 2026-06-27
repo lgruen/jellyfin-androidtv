@@ -144,6 +144,7 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
     private boolean mScrubWasPlaying = false;
     private long mScrubTargetMs = 0;
     private long mLastScrubFetchMs = 0;
+    private boolean mLeftRightHeldScrub = false;
     private boolean mScrubAwaitingFrame = false;
     private final Runnable mScrubClear = () -> {
         mScrubAwaitingFrame = false;
@@ -494,9 +495,26 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
         }
     }
 
+    // Dispatch a synthetic key press (down+up) to the activity, same entry point as a real remote key.
+    private void injectKey(int keyCode) {
+        if (!isAdded()) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        requireActivity().dispatchKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0));
+        requireActivity().dispatchKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0));
+    }
+
     private View.OnKeyListener keyListener = new View.OnKeyListener() {
         @Override
         public boolean onKey(View v, int keyCode, KeyEvent event) {
+            // Release after a held native scrub: synthesize OK (commit the scrub) then BACK (hide the
+            // controls) - reproducing exactly what the user would press by hand to enact and dismiss it.
+            if (event.getAction() == KeyEvent.ACTION_UP && mLeftRightHeldScrub
+                    && (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+                mLeftRightHeldScrub = false;
+                mHandler.post(() -> injectKey(KeyEvent.KEYCODE_DPAD_CENTER));
+                mHandler.postDelayed(() -> injectKey(KeyEvent.KEYCODE_BACK), 150);
+                return false;
+            }
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (!mGuideVisible)
                     leanbackOverlayFragment.setShouldShowOverlay(true);
@@ -631,7 +649,9 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
                                     return true;
                                 }
                                 // Held down: reveal the native seekbar/timeline and let leanback's trickplay scrub
-                                // take over (full-res frame behind, no fullscreen upscaling).
+                                // take over (full-res frame behind, no fullscreen upscaling). On key release we
+                                // synthesize OK (commit the scrub) + BACK (hide the controls) - see ACTION_UP below.
+                                mLeftRightHeldScrub = true;
                                 leanbackOverlayFragment.setShouldShowOverlay(true);
                                 return false;
                             }
