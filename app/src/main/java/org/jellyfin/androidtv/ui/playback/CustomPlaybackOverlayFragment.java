@@ -803,9 +803,11 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
         long target = mScrubTargetMs;
         if (binding != null) binding.scrubPreview.setBitmap(null);
         PlaybackController pc = playbackControllerContainer.getValue().getPlaybackController();
-        // Resume playback at the scrubbed position (or just seek there if we were paused beforehand).
-        if (mScrubWasPlaying) pc.play(target);
-        else pc.seek(target);
+        // A direct-play seek() seeks to the target AND resumes playback; play(pos) would be ignored
+        // here because we paused during the scrub (it just resumes at the old spot). Re-pause afterwards
+        // only if we were already paused before scrubbing.
+        pc.seek(target);
+        if (!mScrubWasPlaying) pc.pause();
     }
 
     public void show() {
